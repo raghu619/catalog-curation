@@ -1,0 +1,15 @@
+{
+  "raw_train": 38631,
+  "raw_test": 9658,
+  "labelled_train": 38511,
+  "labelled_test": 9624,
+  "merged": 48135,
+  "no_conflicting_titles": 48106,
+  "deduplicated": 48074,
+  "classes_20plus": 47550,
+  "capped": 25023,
+  "final": 25023,
+  "train": 20027,
+  "validation": 2498,
+  "test": 2497
+}

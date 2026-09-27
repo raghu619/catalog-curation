@@ -1,0 +1,6 @@
+# Data is hosted on Hugging Face, not in git
+data/
+.ipynb_checkpoints/
+__pycache__/
+.DS_Store
+.env
