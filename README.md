@@ -72,11 +72,14 @@ This project answers that for one field, **product category**, using the data-cu
 ## Run it
 
 ```bash
-pip install pandas pyarrow huggingface_hub matplotlib
-jupyter notebook 01_curation.ipynb
+pip install pandas pyarrow huggingface_hub matplotlib numpy tqdm openai python-dotenv
+jupyter notebook 01_curation.ipynb   # Part 1: curation
+jupyter notebook 02_rewrite.ipynb    # Part 2: LLM rewrite
 ```
 
 Every step records its row count in `funnel`, and every cleaning rule prints real examples of what it matched before it is applied.
+
+Part 2 reads the curated dataset from Hugging Face, so it runs without Part 1's local files. It needs an `OPENAI_API_KEY` in a `.env` file: change the `load_dotenv(...)` path in Cell 1 to point at yours. A full run costs about $0.77 through the Batch API and can take up to 24 hours. The last cell pushes to the dataset repo, so change `REPO_ID` to your own (and log in with `huggingface_hub.login()`) before running it.
 
 ## Part 2: Rewriting every product with an LLM
 
