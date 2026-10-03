@@ -2,7 +2,7 @@
 
 Applying data-curation practice to a real public product catalogue ([Shopify/product-catalogue](https://huggingface.co/datasets/Shopify/product-catalogue), Apache-2.0), and publishing the result as a clean, balanced dataset for product categorisation.
 
-**Dataset:** [raghu619/shopify_category_lite](https://huggingface.co/datasets/raghu619/shopify_category_lite) · 25,022 products · 141 categories · 20,027 / 2,498 / 2,497 train / validation / test
+**Dataset:** [raghu619/shopify_category_lite](https://huggingface.co/datasets/raghu619/shopify_category_lite) · 25,022 products · 141 categories · 20,027 / 2,498 / 2,497 train / validation / test · now includes an LLM-rewritten `summary` column
 
 ## Why this project exists
 
@@ -78,9 +78,56 @@ jupyter notebook 01_curation.ipynb
 
 Every step records its row count in `funnel`, and every cleaning rule prints real examples of what it matched before it is applied.
 
-## Next
+## Part 2: Rewriting every product with an LLM
 
-Fine-tune a model on this dataset to predict categories for products that have none, and plug it into the StyleSense metadata filter.
+Notebook: [`02_rewrite.ipynb`](02_rewrite.ipynb) · Prompt: [`prompts/rewrite_v2.txt`](prompts/rewrite_v2.txt)
+
+Product listings are messy: long marketing text, codes, six languages. A common fix before fine-tuning is to have a cheap LLM rewrite every product into one short, standard format. Instead of assuming it helps, I measured it.
+
+Every product was rewritten by **gpt-4.1-nano** through the **OpenAI Batch API** (50% cheaper, results within 24h) into:
+
+```
+Title: ...
+Brand: ... (or Unknown)
+Description: one sentence (or Unknown)
+Details: one sentence on key features (or Unknown)
+```
+
+**One deliberate change from the course template:** the course prompt asks for a `Category:` line. In this project the category is the label, so that line would put the answer straight back into the input. It was removed.
+
+### Results (all 25,022 products)
+
+| Check | Result |
+|---|---|
+| Bad format | 0 |
+| Median length | 575 -> 260 characters (55% shorter) |
+| Invented numbers flagged | 358 (1.43%). Hand-labelling 20 showed ~25% were real inventions, the rest unit or year conversions, so roughly 0.35% |
+| Description = Unknown | 391 (1.56%); 73 had real descriptions (mostly books and plants, a known limitation) |
+| Languages | Spanish, French, German, Italian, Portuguese and Japanese translated to English |
+| Cost | $0.77 for the final run (about $1.64 including experiments) |
+
+### Three prompts and 10 lines of code
+
+![Prompt v2 vs v3](assets/prompt_v2_vs_v3.png)
+
+1. **Prompt v1 invented facts.** A rolling paper listed as `12,5 cm` (German decimal comma) became "quantity of 12 sheets", despite the rule "never invent facts". It also missed obvious brands.
+2. **Prompt v2 fixed both** and ran on every product. It left 52 broken outputs, and some books described as "Unknown" (an over-applied rule written for a one-word listing).
+3. **Prompt v3 fixed the books and passed a 100-product test.** On all 25,022 products it was worse: Description = Unknown rose from 1.56% to 2.50% and flagged invented numbers from 1.43% to 1.73%. Rejected.
+4. **The broken outputs were fixed by code, not a prompt:** `clean_summary()` enforces the 4-line format. Final dataset: **prompt v2 + `clean_summary()`**.
+
+### What I learned
+
+- **A rule in a prompt is a request, not a guarantee.** If code can guarantee something, use code.
+- **Every prompt fix has side effects.** Each version solved the failure in view and created a new one elsewhere.
+- **Small tests can't see small side effects.** A 100-product sample showed no difference between v2 and v3; the full dataset did.
+- **Check your checks.** My number checker misread thousands separators (`105,931`) and Japanese full-width digits (`５０`) before I fixed it. Hand-labelling a sample measured how often it was right.
+- **Re-run, don't patch.** Mixing outputs from two prompts would mean training on one style and predicting on another (train/serve mismatch). At $0.85, re-running everything was the right call.
+
+![Text length before vs after rewriting](assets/rewrite_length.png)
+
+### Next
+
+Does the rewritten text actually train a better category model than the raw text? Day 3 compares both on the same model.
 
 ## License and attribution
 

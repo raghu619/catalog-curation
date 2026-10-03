@@ -6,6 +6,10 @@ language:
 - en
 - es
 - fr
+- de
+- it
+- pt
+- ja
 size_categories:
 - 10K<n<100K
 source_datasets:
@@ -35,6 +39,7 @@ deduplication, rebalancing, text hygiene) to a real public catalogue.
 | Column | Meaning |
 |---|---|
 | `text` | Model input: product title + description (description truncated to 1000 chars) |
+| `summary` | The same product rewritten by an LLM into a standard 4-line English format (see below) |
 | `label` | Target: level-2 category, e.g. `Home & Garden > Decor` (141 classes) |
 | `full_category` | The original full category path, for reference |
 
@@ -68,8 +73,39 @@ Splits: **20,027 train / 2,498 validation / 2,497 test**, stratified by `label`.
 - **Rebalanced:** classes with fewer than 20 products dropped; classes capped at 500 (random sample).
 - **Text hygiene:** removed emails (283 products), URLs (300) and phone numbers (74). A first, looser phone rule
   matched 1,813 products, mostly sizes, years and IDs, and was replaced with a keyword-anchored rule.
-- **Languages kept as-is:** mostly English, roughly 9% Spanish, some French.
+- **Languages kept as-is:** mostly English, with Spanish, French, German, Italian, Portuguese and Japanese. (A Day 1 word heuristic estimated ~9% Spanish; it could not see other languages.)
 - **Duplicates re-checked after cleaning:** one product became identical to a train product only after text hygiene; it was removed from test. No text appears in more than one split.
+
+## LLM rewrite (`summary` column)
+
+Every product's `text` was rewritten by **gpt-4.1-nano** (OpenAI Batch API, temperature 0) into:
+
+```
+Title: ...
+Brand: ... (or Unknown)
+Description: one sentence (or Unknown)
+Details: one sentence on key features (or Unknown)
+```
+
+Prompt rules ([prompt v2](https://github.com/raghu619/catalog-curation/blob/main/prompts/rewrite_v2.txt)): **no category line** (the category is the label),
+never invent facts, write Unknown when information is missing, copy numbers exactly (decimal commas like `12,5 cm`),
+remove IDs, URLs and contact details, translate to English. The 4-line structure is then **enforced in code** (`clean_summary`):
+first block only, missing Title taken from the listing's first line.
+
+**Quality, all 25,022 products:**
+
+| Check | Result |
+|---|---|
+| Bad format | 0 |
+| Invented numbers flagged | 358 (1.43%); in 20 hand-labelled cases ~25% were real (rest were unit/year conversions), so roughly 0.35% |
+| Description = Unknown | 391 (1.56%); 73 of these had real descriptions (mostly books and plants), a known limitation |
+| Median length | 575 -> 260 characters |
+| Cost | $0.77 for the full run |
+
+**Prompt history:** v1 invented facts (a `12,5 cm` measurement became "12 sheets") and missed obvious brands.
+v2 fixed both. v3 was tested on all products and **rejected**: Description = Unknown rose from 1.56% to 2.50% and flagged invented numbers from 1.43% to 1.73%.
+
+**Train/serve note:** if you train on `summary`, rewrite new products with the same prompt and `clean_summary` before predicting.
 
 ## Known limitations
 
