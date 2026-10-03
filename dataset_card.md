@@ -34,6 +34,8 @@ for **product categorisation from text**: read a product's title and description
 Built as a learning project applying data-curation practice (funnel tracking, label design, leakage checks,
 deduplication, rebalancing, text hygiene) to a real public catalogue.
 
+Code and write-up: [raghu619/catalog-curation](https://github.com/raghu619/catalog-curation) ([curation notebook](https://github.com/raghu619/catalog-curation/blob/main/01_curation.ipynb), [rewrite notebook](https://github.com/raghu619/catalog-curation/blob/main/02_rewrite.ipynb)).
+
 ## Task and columns
 
 | Column | Meaning |
