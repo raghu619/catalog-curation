@@ -72,14 +72,17 @@ This project answers that for one field, **product category**, using the data-cu
 ## Run it
 
 ```bash
-pip install pandas pyarrow huggingface_hub matplotlib numpy tqdm openai python-dotenv
+pip install pandas pyarrow huggingface_hub matplotlib numpy tqdm openai python-dotenv scikit-learn xgboost
 jupyter notebook 01_curation.ipynb   # Part 1: curation
 jupyter notebook 02_rewrite.ipynb    # Part 2: LLM rewrite
+jupyter notebook 03_baselines.ipynb  # Part 3: baselines (no API key, about 3 minutes)
 ```
 
 Every step records its row count in `funnel`, and every cleaning rule prints real examples of what it matched before it is applied.
 
 Part 2 reads the curated dataset from Hugging Face, so it runs without Part 1's local files. It needs an `OPENAI_API_KEY` in a `.env` file: change the `load_dotenv(...)` path in Cell 1 to point at yours. A full run costs about $0.77 through the Batch API and can take up to 24 hours. The last cell pushes to the dataset repo, so change `REPO_ID` to your own (and log in with `huggingface_hub.login()`) before running it.
+
+Part 3 also reads the dataset from Hugging Face and needs no API key. On a Mac, XGBoost may need `brew install libomp`.
 
 ## Part 2: Rewriting every product with an LLM
 
@@ -130,7 +133,54 @@ Details: one sentence on key features (or Unknown)
 
 ### Next
 
-Does the rewritten text actually train a better category model than the raw text? Day 3 compares both on the same model.
+Does the rewritten text actually train a better category model than the raw text? Answered in [Part 3](#part-3-baselines-before-frontier-models): yes, by 8.5 to 10.5 points for every model.
+
+## Part 3: Baselines before frontier models
+
+Notebook: [`03_baselines.ipynb`](03_baselines.ipynb)
+
+StyleSense's metadata filter (`WHERE category = ...`) only works if every product carries a correct category. Real catalogues don't guarantee that, so the system needs a model that reads a product and fills in its category. Before trying frontier LLMs (Week 6 Day 4), this part answers two questions: what do cheap, classic models already get, and does Part 2's $0.77 rewrite help them?
+
+**Setup:** the course's features (a 2,000-word bag of words) and models, with identical settings for both inputs. Only the input changes: raw `text` vs rewritten `summary`. Scores are on the 2,497 test products; XGBoost's early stopping uses the validation set. The course predicts a price and this project predicts one of 141 categories, so each Day 3 model has a classification twin (`LinearRegression` becomes `LogisticRegression`, and so on).
+
+### Results
+
+![Raw text vs LLM rewrite](assets/part3_raw_vs_rewrite.png)
+
+| Model | Raw text | LLM rewrite | Gain | Macro-F1 (raw → rewrite) | Training time |
+|---|---|---|---|---|---|
+| Random category | 0.8% | | | | |
+| Most common category | 2.0% | | | | |
+| Logistic regression | 39.5% | **49.8%** | +10.3 pts | 0.334 → 0.418 | 5s |
+| Random forest | 35.8% | 46.3% | +10.5 pts | 0.234 → 0.364 | 2 to 3s |
+| XGBoost | 39.8% | 48.4% | +8.5 pts | 0.313 → 0.400 | 54 to 58s |
+
+1. **The rewrite helped every model by 8.5 to 10.5 points**, even though it's 55% shorter.
+2. **The simplest model won.** Logistic regression matched or beat both tree models in a fraction of the time. That's the opposite of the course's price project, where the trees won.
+3. **The input mattered more than the algorithm:** about 10 points from changing the text, at most about 4 from changing the model.
+
+### Where the rewrite helped
+
+![Accuracy by listing type](assets/part3_by_listing_type.png)
+
+| Listing type (rough heuristic) | Share of test products | Raw text | Rewrite |
+|---|---|---|---|
+| English sentences | 70% | 48.4% | 53.0% |
+| No sentences (title or spec list) | 16% | 22.6% | 36.8% |
+| Other language | 14% | 15.0% | **48.3%** |
+
+**Translation gave the biggest gain.** Listings in other languages are 14% of the test products but account for almost half of the net gain (120 of the 257 extra correct answers). The raw-text model filed a German listing for mango buttermilk under *Hardware > Building Consumables*; with the rewrite it chose *Food, Beverages & Tobacco > Beverages*. The rewrite isn't all upside, though: it fixed 483 test predictions and broke 226.
+
+### What I learned
+
+- **Baselines give every later number a meaning.** 49.8% sounds weak until you know random guessing gets 0.8% across 141 categories.
+- **Fewer, cleaner words beat more, noisier ones:** a median of 14 vocabulary words per product beat 23.
+- **The course's winner isn't always yours.** Text evidence adds up word by word, which suits a linear model.
+- **Notebooks hide state.** Re-running a cell added a duplicate result and broke the results table. The fix went into the code, and the published notebook was re-run top to bottom.
+
+### Next
+
+A classic model gets about half the categories right: not enough to trust as a filter on its own. The rewrite is the bigger lever, but it costs an LLM call for every product, at training time and at serving time. So Day 4 compares **rewrite + a cheap classifier** against **a frontier model classifying the product directly**, on the same 2,497 test products.
 
 ## License and attribution
 
