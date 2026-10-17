@@ -72,10 +72,11 @@ This project answers that for one field, **product category**, using the data-cu
 ## Run it
 
 ```bash
-pip install pandas pyarrow huggingface_hub matplotlib numpy tqdm openai python-dotenv scikit-learn xgboost
+pip install pandas pyarrow huggingface_hub matplotlib numpy tqdm openai python-dotenv scikit-learn xgboost torch
 jupyter notebook 01_curation.ipynb   # Part 1: curation
 jupyter notebook 02_rewrite.ipynb    # Part 2: LLM rewrite
 jupyter notebook 03_baselines.ipynb  # Part 3: baselines (no API key, about 3 minutes)
+jupyter notebook 04_nn_and_untuned_llm.ipynb  # Part 4: neural networks + LLMs with no training
 ```
 
 Every step records its row count in `funnel`, and every cleaning rule prints real examples of what it matched before it is applied.
@@ -83,6 +84,8 @@ Every step records its row count in `funnel`, and every cleaning rule prints rea
 Part 2 reads the curated dataset from Hugging Face, so it runs without Part 1's local files. It needs an `OPENAI_API_KEY` in a `.env` file: change the `load_dotenv(...)` path in Cell 1 to point at yours. A full run costs about $0.77 through the Batch API and can take up to 24 hours. The last cell pushes to the dataset repo, so change `REPO_ID` to your own (and log in with `huggingface_hub.login()`) before running it.
 
 Part 3 also reads the dataset from Hugging Face and needs no API key. On a Mac, XGBoost may need `brew install libomp`.
+
+Part 4 also reads the dataset from Hugging Face. Part A (the neural networks) needs PyTorch but no API key, and trains every network in about 2 minutes on a laptop CPU. Part B needs an `OPENAI_API_KEY` for gpt-4.1-nano (about 1 cent) and an `OPENROUTER_API_KEY` for the other LLMs (about $1.15 for the 100 products, mostly Claude Sonnet 4.5). Edit `OTHER_MODELS` in Step 13 to change or drop models.
 
 ## Part 2: Rewriting every product with an LLM
 
@@ -181,6 +184,67 @@ StyleSense's metadata filter (`WHERE category = ...`) only works if every produc
 ### Next
 
 A classic model gets about half the categories right: not enough to trust as a filter on its own. The rewrite is the bigger lever, but it costs an LLM call for every product, at training time and at serving time. So Day 4 compares **rewrite + a cheap classifier** against **a frontier model classifying the product directly**, on the same 2,497 test products.
+
+## Part 4: Neural networks and untuned LLMs
+
+Notebook: [`04_nn_and_untuned_llm.ipynb`](04_nn_and_untuned_llm.ipynb)
+
+Week 6 Day 4 of the course moves from traditional ML to neural networks to LLMs. This part asks two questions on our 141 categories: does the course's neural network beat Part 3's 49.8%, and how good is an LLM with no training at all? The second number is the "before" for Day 5, which fine-tunes gpt-4.1-nano.
+
+**Setup:** the same 2,000-word bag of words as Part 3 (logistic regression refitted in this notebook reproduces 49.8% exactly), and the same training loop for every network (Adam, learning rate 0.001, batches of 64, best epoch on validation kept). Each network is scored once on the 2,497 test products.
+
+### Results
+
+![Every model on one chart](assets/part4_final_results.png)
+
+| Model (test set, 2,497 products) | Accuracy | Macro-F1 |
+|---|---|---|
+| Course's 8-layer network | 25.5% | 0.180 |
+| Network with no hidden layers | 49.0% | 0.354 |
+| Logistic regression (Part 3) | 49.8% | 0.418 |
+| 8 layers + skip connections, LayerNorm, dropout | 49.9% | 0.411 |
+| **1 wide hidden layer + dropout** | **53.5%** | **0.444** |
+
+1. **The course's 8-layer network scored 25.5%**, half of logistic regression. Deleting its 7 hidden layers nearly doubled it (49.0%).
+2. **The notebook measured three problems:** the learning signal reaching the word weights was 343x weaker than at the last layer, the network memorised (96% right on training products, 27.5% on validation), and its confidence meant nothing (right 38% of the time when 90%+ sure, against 88% for logistic regression).
+3. **One fix per problem** brought 8 layers back to 49.9%, and one wide hidden layer with dropout reached 53.5%: the first trained model in this project to beat logistic regression.
+
+![Learning signal per layer, before and after the fixes](assets/part4_improved_network.png)
+
+### Why the same network won in the course
+
+The course's network trained on 800,000 products to predict a single number, the price. Here it has 20,027 products and 141 categories to squeeze through a 64-number layer. A price depends on word combinations ("16GB" next to "laptop" vs "USB stick"), which is what hidden layers learn. A category mostly adds up word by word, which a linear model already does. It wasn't the network, it was the data and the task.
+
+### LLMs with no training: a first look on 100 validation products
+
+![LLMs with no training vs trained models](assets/part4_llms_validation100.png)
+
+Every LLM gets the same prompt: the 141 category names, plus a strict JSON schema that only accepts one of them. An **aisle** is the top level of a category (Apparel & Accessories), a **shelf** the second level (Costumes & Accessories).
+
+| Model (same 100 validation products) | Right | Right aisle, wrong shelf | Wrong aisle | Cost for 2,497 products |
+|---|---|---|---|---|
+| Gemini 2.5 Flash | **73%** | 13% | 14% | $1.53 |
+| GPT-5 mini | 68% | 13% | 19% | $2.20 |
+| 1 wide hidden layer (trained) | 52% | 10% | 38% | |
+| Logistic regression (trained) | 49% | 13% | 38% | |
+| Claude Sonnet 4.5 | 45% | 42% | 13% | $24.72 |
+| gpt-4.1-nano | 38% | 15% | 47% | $0.21 |
+
+- **Big LLMs with no training beat every trained model, by 16 to 21 points.** Their misses mostly stay in the right aisle; the bag-of-words models' misses mostly don't.
+- **gpt-4.1-nano, the model Day 5 fine-tunes, scored 38%**, below logistic regression. It filed League of Legends cosplay shoes under Shoes; this dataset files them under Costumes. That's a convention, not knowledge, and conventions are what fine-tuning should teach.
+- **Claude Sonnet 4.5's score is under review, not a verdict.** 42% right aisle, wrong shelf is three times anyone else's, which points at the strict schema rather than the model. A run without the schema is next.
+- With 100 products there's about ±10 points of noise. The run on all 2,497 test products comes next.
+
+### What I learned
+
+- **Deeper isn't better on small data.** The deepest network was the worst model here; one wide layer was the best trained one.
+- **Measure before you fix.** Each fix answered a problem the notebook had measured first: a fading learning signal, memorising, overconfidence.
+- **Confidence is a feature.** Logistic regression knows when it's right (88% right when 90%+ sure). For a metadata filter, that can matter more than another point of accuracy.
+- **Caching beat the Batch API here.** 2,048 of every prompt's 2,190 tokens are the same instructions and category list, so with the cache, normal calls cost about $0.17 for the test set, against about $0.28 at Batch prices without it.
+
+### Next
+
+Day 5 fine-tunes gpt-4.1-nano on the training products. Can a small model that learns this catalogue's conventions close the gap from 38% to the 73% of a big model that only knows the world?
 
 ## License and attribution
 
