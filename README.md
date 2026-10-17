@@ -12,7 +12,7 @@ That filter only works if every product carries **clean metadata**. StyleSense g
 
 > Where does the metadata a RAG filter depends on actually come from, and can it be trusted?
 
-This project answers that for one field, **product category**, using the data-curation techniques from Week 6 of the [LLM Engineering course](https://github.com/ed-donner/llm_engineering) (originally applied there to Amazon price prediction). It is also the curated training set for fine-tuning a category classifier later.
+This project answers that for one field, **product category**, using the data-curation techniques from Week 6 of the LLM Engineering course (originally applied there to Amazon price prediction). It is also the curated training set for fine-tuning a category classifier later.
 
 ## Task
 
